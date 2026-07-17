@@ -3,15 +3,25 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>내진장치 3종 비교 — 원리와 효율성</title>
+<title>내진장치 3종 비교 시뮬레이터</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#0a0e14; --panel:#111823; --panel2:#0d1420; --line: rgba(148,168,196,0.14);
-    --text:#e6ecf5; --text-dim:#7c8aa0; --quake:#e8452c;
-    --building:#4fa8e8; --tmd:#f2c14e; --visc:#2dd4bf; --tld:#7dd3fc;
+    --bg:#0a0e14;
+    --panel:#111823;
+    --panel2:#0d1420;
+    --line: rgba(148,168,196,0.14);
+    --text:#e6ecf5;
+    --text-dim:#7c8aa0;
+    --quake:#e8452c;
+    --building:#4fa8e8;
+    --tmd:#f2c14e;
+    --visc:#2dd4bf;
+    --tld:#7dd3fc;
+    --safe:#3ecf8e;
+    --radius:10px;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
@@ -22,144 +32,726 @@
       var(--bg);
     color:var(--text);
     font-family:'IBM Plex Sans KR','IBM Plex Mono',sans-serif;
-    min-height:100vh; padding:28px 20px 60px;
-    line-height:1.65;
+    min-height:100vh;
+    padding:28px 20px 60px;
+    line-height:1.6;
   }
-  .wrap{max-width:1000px;margin:0 auto;}
+  .wrap{max-width:1180px;margin:0 auto;}
   header{
     display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:14px;
-    border-bottom:1px solid var(--line); padding-bottom:18px; margin-bottom:26px;
+    border-bottom:1px solid var(--line); padding-bottom:18px; margin-bottom:22px;
   }
   .eyebrow{
     font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.18em;
-    color:var(--quake); text-transform:uppercase; margin-bottom:6px;
+    color:var(--quake); text-transform:uppercase; margin-bottom:6px; display:flex; align-items:center; gap:8px;
   }
+  .eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--quake); box-shadow:0 0 8px var(--quake); animation:pulse 1.4s infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
   h1{font-size:clamp(20px,3vw,28px); margin:0; font-weight:600; letter-spacing:-0.01em;}
   .sub{color:var(--text-dim); font-size:13.5px; max-width:560px; margin-top:6px;}
   .navlink{
     display:inline-flex; align-items:center; gap:6px; font-family:'IBM Plex Mono',monospace;
     font-size:12.5px; color:var(--building); text-decoration:none; border:1px solid var(--line);
-    padding:9px 14px; border-radius:8px; white-space:nowrap;
+    padding:9px 14px; border-radius:8px; white-space:nowrap; background:transparent; cursor:pointer;
+    transition:all .15s ease;
   }
   .navlink:hover{border-color:var(--building); background:rgba(79,168,232,0.08);}
 
-  h2{font-size:18px; font-weight:600; margin:38px 0 14px; display:flex; align-items:center; gap:10px;}
-  h2 .chip{width:10px;height:10px;border-radius:3px;display:inline-block;}
+  /* ---------- view switching ---------- */
+  .view{display:none;}
+  .view.active{display:block;}
+
+  /* ---------- simulator view ---------- */
+  .modebar{display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap;}
+  .modebtn{
+    flex:1; min-width:150px; text-align:left; cursor:pointer; border-radius:10px; padding:12px 14px;
+    border:1px solid var(--line); background:var(--panel2); transition:all .15s ease;
+  }
+  .modebtn .mname{font-size:13.5px; font-weight:600; color:var(--text);}
+  .modebtn .mdesc{font-size:11px; color:var(--text-dim); margin-top:3px; line-height:1.4;}
+  .modebtn.active{border-color:var(--dot-color, var(--building)); background:rgba(255,255,255,0.03); box-shadow:0 0 0 1px var(--dot-color, var(--building)) inset;}
+  .modebtn[data-mode="tmd"].active{--dot-color:var(--tmd);}
+  .modebtn[data-mode="viscous"].active{--dot-color:var(--visc);}
+  .modebtn[data-mode="tld"].active{--dot-color:var(--tld);}
+
+  .grid{ display:grid; grid-template-columns: 1.35fr 1fr; gap:18px; }
+  @media (max-width:880px){ .grid{grid-template-columns:1fr;} }
+
+  .panel{
+    background:linear-gradient(180deg,var(--panel),var(--panel2));
+    border:1px solid var(--line); border-radius:var(--radius);
+    padding:18px 18px 16px;
+  }
+  .panel h2{
+    font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--text-dim);
+    margin:0 0 12px; font-weight:600; display:flex; align-items:center; justify-content:space-between;
+  }
+  canvas{display:block; width:100%; border-radius:6px;}
+  #stage{background:#080c12; border:1px solid var(--line);}
+  #graph{background:#080c12; border:1px solid var(--line); margin-top:14px;}
+
+  .legend{display:flex; gap:16px; font-size:11.5px; color:var(--text-dim); font-family:'IBM Plex Mono',monospace; margin-top:8px; flex-wrap:wrap;}
+  .legend span{display:inline-flex; align-items:center; gap:6px;}
+  .legend i{width:10px;height:10px;border-radius:2px; display:inline-block;}
+
+  .control{margin-bottom:20px;}
+  .control:last-child{margin-bottom:6px;}
+  .control-top{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px;}
+  .control-name{font-size:13px; color:var(--text);}
+  .control-val{font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--building); font-weight:600;}
+  input[type=range]{
+    -webkit-appearance:none; width:100%; height:4px; border-radius:2px;
+    background:var(--line); outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:16px; height:16px; border-radius:50%;
+    background:var(--building); cursor:pointer; border:2px solid #0a0e14;
+    box-shadow:0 0 0 1px var(--building);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:16px; height:16px; border-radius:50%; background:var(--building);
+    cursor:pointer; border:2px solid #0a0e14;
+  }
+  .hint{font-size:11px; color:var(--text-dim); margin-top:5px; line-height:1.4;}
+
+  .btnrow{display:flex; gap:10px; margin-top:18px;}
+  button.ctl{
+    flex:1; font-family:'IBM Plex Mono',monospace; font-size:12.5px; letter-spacing:.04em;
+    padding:10px 12px; border-radius:7px; border:1px solid var(--line); cursor:pointer;
+    background:transparent; color:var(--text); transition:all .15s ease;
+  }
+  button.ctl:hover{border-color:var(--building); color:var(--building);}
+  button.ctl.primary{background:var(--building); color:#081018; border-color:var(--building); font-weight:600;}
+  button.ctl.primary:hover{opacity:.88; color:#081018;}
+
+  .stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:16px;}
+  .stat{ background:var(--panel2); border:1px solid var(--line); border-radius:7px; padding:10px 12px; }
+  .stat .label{font-size:10px; color:var(--text-dim); letter-spacing:.08em; text-transform:uppercase;}
+  .stat .val{font-family:'IBM Plex Mono',monospace; font-size:15.5px; margin-top:3px; font-weight:600;}
+  .risk-bar{height:6px; border-radius:3px; background:var(--line); margin-top:8px; overflow:hidden;}
+  .risk-fill{height:100%; width:0%; background:var(--safe); transition:width .25s ease, background .25s ease;}
+
+  /* ---------- compare view ---------- */
+  .cmp h2.section{font-size:18px; font-weight:600; margin:38px 0 14px; display:flex; align-items:center; gap:10px;}
+  .cmp h2.section .chip{width:10px;height:10px;border-radius:3px;display:inline-block;}
+  .cmp h2.section:first-child{margin-top:0;}
 
   .cardgrid{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:10px;}
   @media (max-width:820px){ .cardgrid{grid-template-columns:1fr;} }
-  .card{
+  .cmp .card{
     background:linear-gradient(180deg,var(--panel),var(--panel2));
     border:1px solid var(--line); border-radius:10px; padding:18px;
   }
-  .card .tag{font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--text-dim);}
-  .card h3{margin:6px 0 10px; font-size:16px;}
-  .card p{font-size:13px; color:#c8d2e0; margin:0 0 10px;}
-  .card ul{margin:0; padding-left:18px; font-size:12.5px; color:#c8d2e0;}
-  .card ul li{margin-bottom:6px;}
-  .card.tmd{border-top:3px solid var(--tmd);}
-  .card.visc{border-top:3px solid var(--visc);}
-  .card.tld{border-top:3px solid var(--tld);}
+  .cmp .card .tag{font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--text-dim);}
+  .cmp .card h3{margin:6px 0 10px; font-size:16px;}
+  .cmp .card p{font-size:13px; color:#c8d2e0; margin:0 0 10px;}
+  .cmp .card ul{margin:0; padding-left:18px; font-size:12.5px; color:#c8d2e0;}
+  .cmp .card ul li{margin-bottom:6px;}
+  .cmp .card.tmd{border-top:3px solid var(--tmd);}
+  .cmp .card.visc{border-top:3px solid var(--visc);}
+  .cmp .card.tld{border-top:3px solid var(--tld);}
 
-  table{width:100%; border-collapse:collapse; margin:10px 0 30px; font-size:13px;}
-  th,td{border:1px solid var(--line); padding:10px 12px; text-align:left; vertical-align:top;}
-  th{background:var(--panel2); color:var(--text-dim); font-size:11.5px; letter-spacing:.05em; text-transform:uppercase;}
-  td{background:var(--panel);}
-  tr td:first-child{color:var(--text-dim); font-family:'IBM Plex Mono',monospace; font-size:12px; white-space:nowrap;}
+  .cmp table{width:100%; border-collapse:collapse; margin:10px 0 30px; font-size:13px;}
+  .cmp th,.cmp td{border:1px solid var(--line); padding:10px 12px; text-align:left; vertical-align:top;}
+  .cmp th{background:var(--panel2); color:var(--text-dim); font-size:11.5px; letter-spacing:.05em; text-transform:uppercase;}
+  .cmp td{background:var(--panel);}
+  .cmp tr td:first-child{color:var(--text-dim); font-family:'IBM Plex Mono',monospace; font-size:12px; white-space:nowrap;}
 
-  .note{
+  .cmp .note{
     background:var(--panel2); border:1px solid var(--line); border-left:3px solid var(--quake);
     border-radius:6px; padding:14px 16px; font-size:13px; color:#c8d2e0; margin:16px 0;
   }
-  .note b{color:var(--text);}
+  .cmp .note b{color:var(--text);}
 
-  .refs{font-size:12px; color:var(--text-dim);}
-  .refs li{margin-bottom:8px;}
-  .refs a{color:var(--building); text-decoration:none;}
-  .refs a:hover{text-decoration:underline;}
+  .cmp .refs{font-size:12px; color:var(--text-dim); padding-left:18px;}
+  .cmp .refs li{margin-bottom:8px;}
+  .cmp .refs a{color:var(--building); text-decoration:none;}
+  .cmp .refs a:hover{text-decoration:underline;}
 
-  footer{margin-top:36px; text-align:center; color:var(--text-dim); font-size:11px; font-family:'IBM Plex Mono',monospace;}
+  footer{margin-top:24px; text-align:center; color:var(--text-dim); font-size:11px; font-family:'IBM Plex Mono',monospace;}
 </style>
 </head>
 <body>
 <div class="wrap">
+
   <header>
     <div>
-      <div class="eyebrow">DEVICE COMPARISON</div>
-      <h1>내진장치 3종 — 원리와 효율성 비교</h1>
-      <div class="sub">동조질량댐퍼(TMD) · 점성감쇠기(Viscous Damper) · 동조액체댐퍼(TLD)가 같은 목표(진동 저감)를 어떻게 다른 방식으로 달성하는지 정리했어요.</div>
+      <div class="eyebrow"><span class="dot"></span>SEISMIC RESPONSE MODEL</div>
+      <h1 id="pageTitle">내진장치 3종 비교 시뮬레이터</h1>
+      <div class="sub" id="pageSub">동조질량댐퍼(TMD) · 점성감쇠기(Viscous Damper) · 동조액체댐퍼(TLD) 중 하나를 골라 같은 건물·같은 지진에 적용했을 때의 반응을 비교해보세요.</div>
     </div>
-    <a class="navlink" href="index.html">← 시뮬레이터로 돌아가기</a>
+    <button class="navlink" id="navToggle">원리·효율 비교표 보기 →</button>
   </header>
 
-  <h2><span class="chip" style="background:var(--tmd)"></span>① 동조질량댐퍼 (TMD, Tuned Mass Damper)</h2>
-  <div class="cardgrid">
-    <div class="card tmd">
-      <div class="tag">원리</div>
-      <h3>동조된 보조 질량</h3>
-      <p>건물 고유진동수에 정확히 맞춘(동조된) 추가 질량을 스프링·댐퍼로 매달아 둡니다. 건물이 흔들리면 이 추가 반대 위상으로 흔들리며 건물의 진동 에너지를 흡수합니다.</p>
-      <ul>
-        <li>공진(고유진동수와 일치) 근처에서 가장 강력하게 작동</li>
-        <li>진동수가 어긋나면 효과가 급격히 줄어듦(좁은 대역)</li>
-        <li>대표 사례: 타이베이101의 660톤 진자형 TMD</li>
-      </ul>
+  <!-- ===================== VIEW 1: SIMULATOR ===================== -->
+  <div class="view active" id="simView">
+
+    <div class="modebar">
+      <div class="modebtn active" data-mode="tmd">
+        <div class="mname">① 동조질량댐퍼 (TMD)</div>
+        <div class="mdesc">추(질량)+스프링. 건물 고유진동수에 맞춰 반대로 흔들려 상쇄</div>
+      </div>
+      <div class="modebtn" data-mode="viscous">
+        <div class="mname">② 점성감쇠기 (Viscous Damper)</div>
+        <div class="mdesc">추가 질량 없이, 속도에 비례한 저항력으로만 에너지 소산</div>
+      </div>
+      <div class="modebtn" data-mode="tld">
+        <div class="mname">③ 동조액체댐퍼 (TLD)</div>
+        <div class="mdesc">탱크 속 액체가 출렁이며(슬로싱) 에너지를 흡수</div>
+      </div>
     </div>
-    <div class="card visc">
-      <div class="tag">원리</div>
-      <h3 style="color:var(--visc)">점성감쇠기 (Viscous Damper)</h3>
-      <p>추가 질량이나 스프링 없이, 유체(오일 등)가 담긴 실린더를 건물 부재 사이에 브레이스(사선 지지대) 형태로 설치합니다. 피스톤이 움직이는 속도에 비례한 저항력만으로 진동 에너지를 열로 소산시킵니다.</p>
-      <ul>
-        <li>특정 진동수에 의존하지 않는 광대역(broadband) 작동</li>
-        <li>구조물에 강성(스프링 효과)을 추가하지 않고 순수하게 에너지만 없앰</li>
-        <li>토글시스템과 결합하면 작은 변위도 증폭시켜 소산 효율을 크게 높일 수 있음</li>
-      </ul>
+
+    <div class="grid">
+      <div class="panel">
+        <h2>구조 응답 시각화 <span id="statusTag" style="color:var(--safe)">● RUNNING</span></h2>
+        <canvas id="stage" width="760" height="440"></canvas>
+        <div class="legend" id="legendBox">
+          <span><i style="background:var(--building)"></i>건물 (지면 대비 상대 변위)</span>
+          <span id="legendSec"><i style="background:var(--tmd)"></i>감쇠장치 (건물 대비 상대 변위)</span>
+          <span><i style="background:var(--quake)"></i>지진파 (지면 절대 변위)</span>
+        </div>
+        <canvas id="graph" width="760" height="180"></canvas>
+      </div>
+
+      <div class="panel">
+        <h2 id="controlTitle">조작 변수 — TMD</h2>
+
+        <div class="control">
+          <div class="control-top">
+            <span class="control-name">지진파 진동수 (Hz)</span>
+            <span class="control-val" id="freqVal">1.0 Hz</span>
+          </div>
+          <input type="range" id="freqSlider" min="0.2" max="3.0" step="0.1" value="1.0">
+          <div class="hint">값이 클수록 빠르게 흔들리는 지진을 의미합니다.</div>
+        </div>
+
+        <div class="control">
+          <div class="control-top">
+            <span class="control-name">건물 층수</span>
+            <span class="control-val" id="floorsVal">3층</span>
+          </div>
+          <input type="range" id="floorsSlider" min="1" max="5" step="1" value="3">
+          <div class="hint">층수가 높을수록 건물의 고유진동수가 낮아집니다.</div>
+        </div>
+
+        <div class="control devctl" data-mode="tmd">
+          <div class="control-top">
+            <span class="control-name">TMD 추 질량 (kg)</span>
+            <span class="control-val" id="massVal">5.0 kg</span>
+          </div>
+          <input type="range" id="massSlider" min="0" max="20" step="0.5" value="5.0">
+          <div class="hint">0kg이면 TMD가 없는 것과 같습니다. 건물 고유진동수에 미리 동조되어 있습니다.</div>
+        </div>
+
+        <div class="control devctl" data-mode="viscous" style="display:none">
+          <div class="control-top">
+            <span class="control-name">점성감쇠계수 c (N·s/m)</span>
+            <span class="control-val" id="viscVal">40</span>
+          </div>
+          <input type="range" id="viscSlider" min="0" max="150" step="5" value="40">
+          <div class="hint">추가 질량 없이 건물 속도에 비례한 저항력만 작용합니다. 특정 진동수에 동조되지 않아 전 대역에서 항상 작동합니다.</div>
+        </div>
+
+        <div class="control devctl" data-mode="tld" style="display:none">
+          <div class="control-top">
+            <span class="control-name">탱크 액체 질량 (kg)</span>
+            <span class="control-val" id="tldVal">5.0 kg</span>
+          </div>
+          <input type="range" id="tldSlider" min="0" max="20" step="0.5" value="5.0">
+          <div class="hint">액체 중 약 70%만 1차 슬로싱(출렁임)에 실제로 참여합니다. 나머지 30%는 그냥 얹힌 무게로만 작용해 건물을 살짝 더 무겁게 만듭니다. 동조 진동수는 건물에 자동으로 맞춰집니다.</div>
+        </div>
+
+        <div class="btnrow">
+          <button class="ctl primary" id="toggleBtn">일시정지</button>
+          <button class="ctl" id="resetBtn">초기화</button>
+        </div>
+
+        <div class="stat-grid">
+          <div class="stat">
+            <div class="label">건물 고유진동수</div>
+            <div class="val" id="naturalFreq">— Hz</div>
+          </div>
+          <div class="stat">
+            <div class="label">진동 증폭 위험도 (실측)</div>
+            <div class="val" id="riskLabel">—</div>
+            <div class="risk-bar"><div class="risk-fill" id="riskFill"></div></div>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="card tld">
-      <div class="tag">원리</div>
-      <h3 style="color:var(--tld)">동조액체댐퍼 (TLD)</h3>
-      <p>탱크에 담긴 액체(대개 물)의 출렁임(슬로싱)이 건물의 흔들림과 반대 위상으로 작용해 에너지를 흡수합니다. 원리 자체는 TMD와 유사(보조 질량을 동조)하지만, 그 보조 질량이 고체가 아니라 액체라는 점이 다릅니다.</p>
-      <ul>
-        <li>액체의 슬로싱 주파수가 탱크 크기·수심에 따라 결정되며 건물 고유진동수에 맞춰 설계</li>
-        <li>슬로싱이 비선형적이라 진폭이 클수록 거동 예측이 복잡해짐</li>
-        <li>풍하중으로 인한 진동 제어에 특히 많이 사용됨 (초고층 건물)</li>
-      </ul>
-    </div>
+
+    <footer>세 장치 모두 건물 자체 감쇠비 2%를 기본으로 가정 · 슬라이더 조작 시 진동 상태가 초기화됩니다</footer>
   </div>
 
-  <h2>핵심 차이 한눈에 보기</h2>
-  <table>
-    <tr><th>구분</th><th style="color:var(--tmd)">TMD</th><th style="color:var(--visc)">점성감쇠기</th><th style="color:var(--tld)">TLD</th></tr>
-    <tr><td>추가 질량</td><td>있음 (고체 추)</td><td>없음</td><td>있음 (액체)</td></tr>
-    <tr><td>동조(tuning)</td><td>건물 고유진동수에 정밀하게 맞춰야 함</td><td>불필요 (모든 진동수에 반응)</td><td>탱크 설계로 맞춤, 액체 자체가 어느 정도 자동 적응</td></tr>
-    <tr><td>작동 대역</td><td>좁음 (공진 근처에서만 강력)</td><td>넓음 (광대역)</td><td>TMD와 비슷하게 좁지만 비선형 거동으로 대역이 다소 완만함</td></tr>
-    <tr><td>거동 특성</td><td>선형(스프링+질량, 예측 쉬움)</td><td>선형(속도 비례, 예측 쉬움)</td><td>비선형(슬로싱·파동 방정식, 예측 어려움)</td></tr>
-    <tr><td>대표 용도</td><td>지진·바람 모두, 초고층 상징 구조물</td><td>지진 하중, 내진 보강(리트로핏)에 많이 사용</td><td>바람 하중 제어에 특히 많이 사용</td></tr>
-    <tr><td>설치·유지비</td><td>상대적으로 고가·정밀 시공 필요</td><td>비교적 단순, 브레이스 형태로 시공</td><td>물탱크 수준이라 시공·유지비 저렴</td></tr>
-  </table>
+  <!-- ===================== VIEW 2: COMPARISON ===================== -->
+  <div class="view cmp" id="compareView">
 
-  <h2>시뮬레이터에서 확인할 수 있는 효율성 차이</h2>
-  <p style="font-size:13.5px;color:#c8d2e0;">시뮬레이터에서 지진파 진동수를 건물 고유진동수 근처로 맞췄다가 점점 멀어지게 움직여보면:</p>
-  <ul style="font-size:13.5px;color:#c8d2e0;">
-    <li><b style="color:var(--tmd)">TMD</b>는 진동수가 고유진동수와 딱 맞을 때 위험도가 크게 떨어지지만, 조금만 벗어나도 효과가 눈에 띄게 줄어듭니다.</li>
-    <li><b style="color:var(--visc)">점성감쇠기</b>는 진동수를 이리저리 바꿔도 위험도 감소폭이 비교적 완만하게 유지됩니다 — 특정 진동수를 "노리지" 않기 때문입니다.</li>
-    <li><b style="color:var(--tld)">TLD</b>는 TMD와 비슷하게 동조된 진동수 근처에서 강하지만, 감쇠비 자체가 더 높게 가정되어 있어(슬로싱 에너지 소산) 다소 더 넓은 범위에서 효과를 보입니다.</li>
-  </ul>
+    <h2 class="section"><span class="chip" style="background:var(--tmd)"></span>① 동조질량댐퍼 (TMD, Tuned Mass Damper)</h2>
+    <div class="cardgrid">
+      <div class="card tmd">
+        <div class="tag">원리</div>
+        <h3>동조된 보조 질량</h3>
+        <p>건물 고유진동수에 정확히 맞춘(동조된) 추가 질량을 스프링·댐퍼로 매달아 둡니다. 건물이 흔들리면 이 추가 반대 위상으로 흔들리며 건물의 진동 에너지를 흡수합니다.</p>
+        <ul>
+          <li>공진(고유진동수와 일치) 근처에서 가장 강력하게 작동</li>
+          <li>진동수가 어긋나면 효과가 급격히 줄어듦(좁은 대역)</li>
+          <li>대표 사례: 타이베이101의 660톤 진자형 TMD</li>
+        </ul>
+      </div>
+      <div class="card visc">
+        <div class="tag">원리</div>
+        <h3 style="color:var(--visc)">점성감쇠기 (Viscous Damper)</h3>
+        <p>추가 질량이나 스프링 없이, 유체(오일 등)가 담긴 실린더를 건물 부재 사이에 브레이스(사선 지지대) 형태로 설치합니다. 피스톤이 움직이는 속도에 비례한 저항력만으로 진동 에너지를 열로 소산시킵니다.</p>
+        <ul>
+          <li>특정 진동수에 의존하지 않는 광대역(broadband) 작동</li>
+          <li>구조물에 강성(스프링 효과)을 추가하지 않고 순수하게 에너지만 없앰</li>
+          <li>토글시스템과 결합하면 작은 변위도 증폭시켜 소산 효율을 크게 높일 수 있음</li>
+        </ul>
+      </div>
+      <div class="card tld">
+        <div class="tag">원리</div>
+        <h3 style="color:var(--tld)">동조액체댐퍼 (TLD)</h3>
+        <p>탱크에 담긴 액체(대개 물)의 출렁임(슬로싱)이 건물의 흔들림과 반대 위상으로 작용해 에너지를 흡수합니다. 원리 자체는 TMD와 유사(보조 질량을 동조)하지만, 그 보조 질량이 고체가 아니라 액체라는 점이 다릅니다.</p>
+        <ul>
+          <li>액체의 슬로싱 주파수가 탱크 크기·수심에 따라 결정되며 건물 고유진동수에 맞춰 설계</li>
+          <li>슬로싱이 비선형적이라 진폭이 클수록 거동 예측이 복잡해짐</li>
+          <li>풍하중으로 인한 진동 제어에 특히 많이 사용됨 (초고층 건물)</li>
+        </ul>
+      </div>
+    </div>
 
-  <div class="note">
-    <b>시뮬레이션 단순화 안내</b> — 이 비교는 교육용 모델입니다. TLD는 실제로는 얕은물 파동방정식을 따르는 비선형 시스템인데, 여기서는 TMD와 같은 질량-스프링-댐퍼 형태로 근사했고, 액체 중 70%만 실제로 반응한다는 가정도 임의로 정한 값입니다. 점성감쇠기의 감쇠계수도 실제로는 온도·변형 속도에 따라 달라지는 비선형 유체 특성을 갖지만, 여기서는 상수로 고정했습니다.
+    <h2 class="section">핵심 차이 한눈에 보기</h2>
+    <table>
+      <tr><th>구분</th><th style="color:var(--tmd)">TMD</th><th style="color:var(--visc)">점성감쇠기</th><th style="color:var(--tld)">TLD</th></tr>
+      <tr><td>추가 질량</td><td>있음 (고체 추)</td><td>없음</td><td>있음 (액체)</td></tr>
+      <tr><td>동조(tuning)</td><td>건물 고유진동수에 정밀하게 맞춰야 함</td><td>불필요 (모든 진동수에 반응)</td><td>탱크 설계로 맞춤, 액체 자체가 어느 정도 자동 적응</td></tr>
+      <tr><td>작동 대역</td><td>좁음 (공진 근처에서만 강력)</td><td>넓음 (광대역)</td><td>TMD와 비슷하게 좁지만 비선형 거동으로 대역이 다소 완만함</td></tr>
+      <tr><td>거동 특성</td><td>선형(스프링+질량, 예측 쉬움)</td><td>선형(속도 비례, 예측 쉬움)</td><td>비선형(슬로싱·파동 방정식, 예측 어려움)</td></tr>
+      <tr><td>대표 용도</td><td>지진·바람 모두, 초고층 상징 구조물</td><td>지진 하중, 내진 보강(리트로핏)에 많이 사용</td><td>바람 하중 제어에 특히 많이 사용</td></tr>
+      <tr><td>설치·유지비</td><td>상대적으로 고가·정밀 시공 필요</td><td>비교적 단순, 브레이스 형태로 시공</td><td>물탱크 수준이라 시공·유지비 저렴</td></tr>
+    </table>
+
+    <h2 class="section">시뮬레이터에서 확인할 수 있는 효율성 차이</h2>
+    <p style="font-size:13.5px;color:#c8d2e0;">시뮬레이터에서 지진파 진동수를 건물 고유진동수 근처로 맞췄다가 점점 멀어지게 움직여보면:</p>
+    <ul style="font-size:13.5px;color:#c8d2e0;">
+      <li><b style="color:var(--tmd)">TMD</b>는 진동수가 고유진동수와 딱 맞을 때 위험도가 크게 떨어지지만, 조금만 벗어나도 효과가 눈에 띄게 줄어듭니다.</li>
+      <li><b style="color:var(--visc)">점성감쇠기</b>는 진동수를 이리저리 바꿔도 위험도 감소폭이 비교적 완만하게 유지됩니다 — 특정 진동수를 "노리지" 않기 때문입니다.</li>
+      <li><b style="color:var(--tld)">TLD</b>는 TMD와 비슷하게 동조된 진동수 근처에서 강하지만, 감쇠비 자체가 더 높게 가정되어 있어(슬로싱 에너지 소산) 다소 더 넓은 범위에서 효과를 보입니다.</li>
+    </ul>
+
+    <div class="note">
+      <b>시뮬레이션 단순화 안내</b> — 이 비교는 교육용 모델입니다. TLD는 실제로는 얕은물 파동방정식을 따르는 비선형 시스템인데, 여기서는 TMD와 같은 질량-스프링-댐퍼 형태로 근사했고, 액체 중 70%만 실제로 반응한다는 가정도 임의로 정한 값입니다. 점성감쇠기의 감쇠계수도 실제로는 온도·변형 속도에 따라 달라지는 비선형 유체 특성을 갖지만, 여기서는 상수로 고정했습니다.
+    </div>
+
+    <h2 class="section">참고 자료</h2>
+    <ul class="refs">
+      <li>실리콘 점성 감쇠장치를 이용한 다층형 토글감쇠시스템 내진 보강 기술, 한국지진공학회 특집기사(2021) — <a href="https://koreascience.kr/article/JAKO202121061521449.pdf" target="_blank" rel="noopener">koreascience.kr</a></li>
+      <li>용어검색: 점성 감쇠기(viscous damper), 한국소음진동공학회 — <a href="https://www.ksnve.or.kr/dictionary/?alpha=D" target="_blank" rel="noopener">ksnve.or.kr</a></li>
+      <li>진동학 — 점성감쇠·쿨롱감쇠·구조감쇠 정의, 나무위키 — <a href="https://namu.wiki/w/%EC%A7%84%EB%8F%99%ED%95%99" target="_blank" rel="noopener">namu.wiki</a></li>
+      <li>Multipoint Wave Measurement in Tuned Liquid Damper, Sensors 21(24), 2021 — <a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8707638/" target="_blank" rel="noopener">ncbi.nlm.nih.gov</a></li>
+      <li>Experimental Testing on Tuned Liquid Dampers for Implementation in Industrial Chimneys — <a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC11086212/" target="_blank" rel="noopener">ncbi.nlm.nih.gov</a></li>
+      <li>초고층 건물의 양방향 풍응답 제어를 위한 액체댐퍼 실험, 한국소음진동공학회논문집(2010) — <a href="https://www.dbpia.co.kr/journal/articleDetail?nodeId=NODE02404541" target="_blank" rel="noopener">dbpia.co.kr</a></li>
+    </ul>
+
+    <footer>내진장치 3종 비교 시뮬레이터 · 교육용 단순화 모델</footer>
   </div>
 
-  <h2>참고 자료</h2>
-  <ul class="refs">
-    <li>실리콘 점성 감쇠장치를 이용한 다층형 토글감쇠시스템 내진 보강 기술, 한국지진공학회 특집기사(2021) — <a href="https://koreascience.kr/article/JAKO202121061521449.pdf" target="_blank" rel="noopener">koreascience.kr</a></li>
-    <li>용어검색: 점성 감쇠기(viscous damper), 한국소음진동공학회 — <a href="https://www.ksnve.or.kr/dictionary/?alpha=D" target="_blank" rel="noopener">ksnve.or.kr</a></li>
-    <li>진동학 — 점성감쇠·쿨롱감쇠·구조감쇠 정의, 나무위키 — <a href="https://namu.wiki/w/%EC%A7%84%EB%8F%99%ED%95%99" target="_blank" rel="noopener">namu.wiki</a></li>
-    <li>Multipoint Wave Measurement in Tuned Liquid Damper, Sensors 21(24), 2021 — <a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8707638/" target="_blank" rel="noopener">ncbi.nlm.nih.gov</a></li>
-    <li>Experimental Testing on Tuned Liquid Dampers for Implementation in Industrial Chimneys — <a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC11086212/" target="_blank" rel="noopener">ncbi.nlm.nih.gov</a></li>
-    <li>초고층 건물의 양방향 풍응답 제어를 위한 액체댐퍼 실험, 한국소음진동공학회논문집(2010) — <a href="https://www.dbpia.co.kr/journal/articleDetail?nodeId=NODE02404541" target="_blank" rel="noopener">dbpia.co.kr</a></li>
-  </ul>
-
-  <footer>내진장치 3종 비교 시뮬레이터 · 교육용 단순화 모델</footer>
 </div>
+
+<script>
+(function(){
+  // ================= VIEW SWITCHING =================
+  const simView = document.getElementById('simView');
+  const compareView = document.getElementById('compareView');
+  const navToggle = document.getElementById('navToggle');
+  const pageTitle = document.getElementById('pageTitle');
+  const pageSub = document.getElementById('pageSub');
+  let currentView = 'sim';
+
+  const titles = {
+    sim: { t: '내진장치 3종 비교 시뮬레이터', s: '동조질량댐퍼(TMD) · 점성감쇠기(Viscous Damper) · 동조액체댐퍼(TLD) 중 하나를 골라 같은 건물·같은 지진에 적용했을 때의 반응을 비교해보세요.' },
+    compare: { t: '내진장치 3종 — 원리와 효율성 비교', s: '동조질량댐퍼(TMD) · 점성감쇠기(Viscous Damper) · 동조액체댐퍼(TLD)가 같은 목표(진동 저감)를 어떻게 다른 방식으로 달성하는지 정리했어요.' }
+  };
+
+  function showView(v){
+    currentView = v;
+    simView.classList.toggle('active', v === 'sim');
+    compareView.classList.toggle('active', v === 'compare');
+    navToggle.textContent = v === 'sim' ? '원리·효율 비교표 보기 →' : '← 시뮬레이터로 돌아가기';
+    pageTitle.textContent = titles[v].t;
+    pageSub.textContent = titles[v].s;
+    window.scrollTo({top:0, behavior:'instant'});
+  }
+  navToggle.addEventListener('click', ()=> showView(currentView === 'sim' ? 'compare' : 'sim'));
+
+  // ================= SIMULATOR PHYSICS =================
+  const dt = 0.01;
+  const buildingMassBase = 50.0;
+  const kBuilding = 500.0;
+  const zetaBuilding = 0.02;
+
+  const kTmd = 50.0, zetaTmd = 0.05;
+  const pTLD = 0.7, zetaTld = 0.12;
+
+  let mode = 'tmd';
+  let t = 0;
+  let groundX = 0, buildingX = 0, buildingV = 0;
+  let secX = 0, secV = 0;
+  let running = true;
+
+  let earthquakeFreq = 1.0;
+  let buildingFloors = 3;
+  let tmdMass = 5.0;
+  let viscC = 40;
+  let tldMass = 5.0;
+
+  const HISTORY_SECONDS = 12;
+  const maxPoints = HISTORY_SECONDS / dt;
+  const buildingHist = [];
+  const secHist = [];
+  const groundHist = [];
+
+  const freqSlider = document.getElementById('freqSlider');
+  const floorsSlider = document.getElementById('floorsSlider');
+  const massSlider = document.getElementById('massSlider');
+  const viscSlider = document.getElementById('viscSlider');
+  const tldSlider = document.getElementById('tldSlider');
+  const freqVal = document.getElementById('freqVal');
+  const floorsVal = document.getElementById('floorsVal');
+  const massVal = document.getElementById('massVal');
+  const viscVal = document.getElementById('viscVal');
+  const tldVal = document.getElementById('tldVal');
+  const toggleBtn = document.getElementById('toggleBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const statusTag = document.getElementById('statusTag');
+  const naturalFreqEl = document.getElementById('naturalFreq');
+  const riskLabel = document.getElementById('riskLabel');
+  const riskFill = document.getElementById('riskFill');
+  const controlTitle = document.getElementById('controlTitle');
+  const legendSec = document.getElementById('legendSec');
+  const modeBtns = document.querySelectorAll('.modebtn');
+  const devctls = document.querySelectorAll('.devctl');
+
+  const modeNames = { tmd: 'TMD', viscous: '점성감쇠기', tld: 'TLD' };
+  const modeColors = { tmd: 'var(--tmd)', viscous: 'var(--visc)', tld: 'var(--tld)' };
+  const modeLegendText = {
+    tmd: '동조질량 (TMD, 건물 대비 상대 변위)',
+    viscous: '점성감쇠기는 별도 질량이 없어 그래프에 표시되지 않습니다',
+    tld: '액체 슬로싱 질량 (TLD, 건물 대비 상대 변위)'
+  };
+
+  function setMode(m){
+    mode = m;
+    modeBtns.forEach(b=> b.classList.toggle('active', b.dataset.mode === m));
+    devctls.forEach(c=> c.style.display = (c.dataset.mode === m) ? '' : 'none');
+    controlTitle.textContent = '조작 변수 — ' + modeNames[m];
+    legendSec.innerHTML = '<i style="background:'+modeColors[m]+'"></i>' + modeLegendText[m];
+    resetDynamics();
+  }
+  modeBtns.forEach(b=> b.addEventListener('click', ()=> setMode(b.dataset.mode)));
+
+  function resetDynamics(){
+    buildingX = 0; buildingV = 0; secX = 0; secV = 0;
+    buildingHist.length = 0; secHist.length = 0; groundHist.length = 0;
+  }
+
+  freqSlider.addEventListener('input', e=>{
+    earthquakeFreq = parseFloat(e.target.value);
+    freqVal.textContent = earthquakeFreq.toFixed(1) + ' Hz';
+    resetDynamics();
+  });
+  floorsSlider.addEventListener('input', e=>{
+    buildingFloors = parseInt(e.target.value);
+    floorsVal.textContent = buildingFloors + '층';
+    resetDynamics();
+  });
+  massSlider.addEventListener('input', e=>{
+    tmdMass = parseFloat(e.target.value);
+    massVal.textContent = tmdMass.toFixed(1) + ' kg';
+    resetDynamics();
+  });
+  viscSlider.addEventListener('input', e=>{
+    viscC = parseFloat(e.target.value);
+    viscVal.textContent = viscC.toFixed(0);
+    resetDynamics();
+  });
+  tldSlider.addEventListener('input', e=>{
+    tldMass = parseFloat(e.target.value);
+    tldVal.textContent = tldMass.toFixed(1) + ' kg';
+    resetDynamics();
+  });
+
+  toggleBtn.addEventListener('click', ()=>{
+    running = !running;
+    toggleBtn.textContent = running ? '일시정지' : '재생';
+    statusTag.textContent = running ? '● RUNNING' : '● PAUSED';
+    statusTag.style.color = running ? 'var(--safe)' : 'var(--text-dim)';
+  });
+  resetBtn.addEventListener('click', ()=>{ t = 0; resetDynamics(); });
+
+  function getEffectiveKBuilding(){ return kBuilding / (buildingFloors * 0.8); }
+  function getBuildingMassEffective(){
+    if (mode === 'tld') return buildingMassBase + tldMass * (1 - pTLD);
+    return buildingMassBase;
+  }
+  function getNaturalFreq(){
+    const k = getEffectiveKBuilding();
+    const m = getBuildingMassEffective();
+    return Math.sqrt(k / m) / (2 * Math.PI);
+  }
+
+  function step(){
+    const omega = 2 * Math.PI * earthquakeFreq;
+    groundX = 0.5 * Math.sin(omega * t);
+    const groundV = 0.5 * omega * Math.cos(omega * t);
+
+    const effK = getEffectiveKBuilding();
+    const mEff = getBuildingMassEffective();
+    const cBuilding = 2 * zetaBuilding * Math.sqrt(effK * mEff);
+    const fB = -effK * (buildingX - groundX) - cBuilding * (buildingV - groundV);
+
+    if (mode === 'viscous'){
+      const fVisc = -viscC * (buildingV - groundV);
+      const buildingA = (fB + fVisc) / mEff;
+      buildingV += buildingA * dt;
+      buildingX += buildingV * dt;
+      secX = 0; secV = 0;
+    } else {
+      let m2, k2, zeta2;
+      if (mode === 'tmd'){
+        m2 = tmdMass; k2 = kTmd; zeta2 = zetaTmd;
+      } else {
+        m2 = tldMass * pTLD;
+        const omegaN = Math.sqrt(effK / mEff);
+        k2 = m2 * omegaN * omegaN;
+        zeta2 = zetaTld;
+      }
+      const fInteraction = -k2 * (secX - buildingX);
+      let fDamping = 0;
+      if (m2 > 0){
+        const c2 = 2 * zeta2 * Math.sqrt(k2 * m2);
+        fDamping = -c2 * (secV - buildingV);
+      }
+      const buildingA = (fB - fInteraction - fDamping) / mEff;
+      buildingV += buildingA * dt;
+      buildingX += buildingV * dt;
+
+      if (m2 > 0){
+        const secA = (fInteraction + fDamping) / m2;
+        secV += secA * dt;
+        secX += secV * dt;
+      } else {
+        secX = buildingX; secV = 0;
+      }
+    }
+
+    buildingHist.push(buildingX - groundX);
+    secHist.push(secX - buildingX);
+    groundHist.push(groundX);
+    if (buildingHist.length > maxPoints){ buildingHist.shift(); secHist.shift(); groundHist.shift(); }
+
+    t += dt;
+  }
+
+  const stage = document.getElementById('stage');
+  const sctx = stage.getContext('2d');
+  const graph = document.getElementById('graph');
+  const gctx = graph.getContext('2d');
+
+  function drawStage(){
+    const W = stage.width, H = stage.height;
+    sctx.clearRect(0,0,W,H);
+
+    sctx.strokeStyle = 'rgba(148,168,196,0.06)'; sctx.lineWidth = 1;
+    for(let x=0; x<W; x+=28){ sctx.beginPath(); sctx.moveTo(x,0); sctx.lineTo(x,H); sctx.stroke(); }
+    for(let y=0; y<H; y+=28){ sctx.beginPath(); sctx.moveTo(0,y); sctx.lineTo(W,y); sctx.stroke(); }
+
+    const scale = 160;
+    const cx = W/2;
+    const groundY = H - 70;
+
+    const gx = cx + groundX * scale;
+    sctx.save();
+    sctx.translate(gx, 0);
+    sctx.fillStyle = '#1a2330';
+    sctx.fillRect(-190, groundY, 380, 26);
+    sctx.strokeStyle = 'rgba(232,69,44,0.5)'; sctx.lineWidth = 1;
+    for(let i=-180;i<180;i+=14){ sctx.beginPath(); sctx.moveTo(i, groundY+26); sctx.lineTo(i+10, groundY+16); sctx.stroke(); }
+    sctx.restore();
+    sctx.fillStyle = '#e8452c';
+    sctx.font = '11px "IBM Plex Mono", monospace';
+    sctx.textAlign = 'center';
+    sctx.fillText('GROUND MOTION', gx, groundY + 44);
+
+    const floorH = 46;
+    const bH = buildingFloors * floorH;
+    const bW = 96;
+    const bx = cx + buildingX * scale;
+    const bTop = groundY - bH;
+
+    sctx.save();
+    sctx.shadowColor = 'rgba(79,168,232,0.25)'; sctx.shadowBlur = 18;
+    sctx.fillStyle = 'rgba(79,168,232,0.16)';
+    sctx.strokeStyle = '#4fa8e8'; sctx.lineWidth = 2;
+    sctx.fillRect(bx - bW/2, bTop, bW, bH);
+    sctx.strokeRect(bx - bW/2, bTop, bW, bH);
+    sctx.restore();
+
+    sctx.strokeStyle = 'rgba(79,168,232,0.35)'; sctx.lineWidth = 1;
+    for(let i=1;i<buildingFloors;i++){
+      const fy = bTop + i*floorH;
+      sctx.beginPath(); sctx.moveTo(bx-bW/2, fy); sctx.lineTo(bx+bW/2, fy); sctx.stroke();
+    }
+
+    if (mode === 'tmd' || mode === 'tld'){
+      const secPxX = cx + secX * scale;
+      const springTopY = bTop + 10;
+      const ballY = bTop - 22;
+      const color = mode === 'tmd' ? '#f2c14e' : '#7dd3fc';
+
+      if (mode === 'tmd'){
+        sctx.strokeStyle = color; sctx.lineWidth = 2;
+        sctx.beginPath();
+        const zigs = 6;
+        sctx.moveTo(bx, springTopY);
+        for(let i=1;i<=zigs;i++){
+          const frac = i/zigs;
+          const yy = springTopY - frac*(springTopY-ballY);
+          const xx = bx + (secPxX-bx)*frac + (i%2===0? 10:-10);
+          sctx.lineTo(xx, yy);
+        }
+        sctx.lineTo(secPxX, ballY);
+        sctx.stroke();
+
+        sctx.beginPath();
+        sctx.fillStyle = color;
+        sctx.shadowColor = 'rgba(242,193,78,0.6)'; sctx.shadowBlur = 14;
+        sctx.arc(secPxX, ballY, 11, 0, Math.PI*2);
+        sctx.fill(); sctx.shadowBlur = 0;
+      } else {
+        const tankW = 110, tankH = 34;
+        const tankX = bx - tankW/2, tankY = bTop - tankH - 8;
+        sctx.strokeStyle = 'rgba(125,211,252,0.6)'; sctx.lineWidth = 2;
+        sctx.strokeRect(tankX, tankY, tankW, tankH);
+        const fillH = tankH * 0.62;
+        const tilt = Math.max(-10, Math.min(10, (secX-buildingX)*400));
+        sctx.beginPath();
+        sctx.moveTo(tankX+2, tankY+tankH-2);
+        sctx.lineTo(tankX+2, tankY + (tankH-fillH) - tilt);
+        sctx.lineTo(tankX+tankW-2, tankY + (tankH-fillH) + tilt);
+        sctx.lineTo(tankX+tankW-2, tankY+tankH-2);
+        sctx.closePath();
+        sctx.fillStyle = 'rgba(125,211,252,0.35)';
+        sctx.fill();
+        sctx.strokeStyle = color; sctx.lineWidth = 1.4;
+        sctx.beginPath();
+        sctx.moveTo(tankX+2, tankY + (tankH-fillH) - tilt);
+        sctx.lineTo(tankX+tankW-2, tankY + (tankH-fillH) + tilt);
+        sctx.stroke();
+      }
+      sctx.fillStyle = '#7c8aa0';
+      sctx.font = '10px "IBM Plex Mono", monospace';
+      sctx.textAlign = 'center';
+      sctx.fillText(mode === 'tmd' ? 'TMD' : 'TLD TANK', bx, bTop - (mode==='tmd'? 38: 52));
+    } else {
+      const anchorX = bx - 140;
+      const anchorY = groundY;
+      const attachX = bx - bW/2;
+      const attachY = groundY - 18;
+      sctx.strokeStyle = 'rgba(45,212,191,0.35)'; sctx.lineWidth = 6; sctx.lineCap='round';
+      sctx.beginPath(); sctx.moveTo(anchorX, anchorY); sctx.lineTo(attachX, attachY); sctx.stroke();
+      const midX = (anchorX+attachX)/2, midY = (anchorY+attachY)/2;
+      sctx.save();
+      sctx.translate(midX, midY);
+      const ang = Math.atan2(attachY-anchorY, attachX-anchorX);
+      sctx.rotate(ang);
+      sctx.fillStyle = '#0d1420'; sctx.strokeStyle = '#2dd4bf'; sctx.lineWidth = 2;
+      sctx.fillRect(-22, -9, 44, 18);
+      sctx.strokeRect(-22, -9, 44, 18);
+      sctx.restore();
+      sctx.fillStyle = '#0f1720'; sctx.beginPath(); sctx.arc(anchorX, anchorY, 5, 0, Math.PI*2); sctx.fill();
+      sctx.strokeStyle = '#2dd4bf'; sctx.lineWidth = 1.5; sctx.stroke();
+      sctx.fillStyle = '#7c8aa0'; sctx.font = '10px "IBM Plex Mono", monospace'; sctx.textAlign = 'center';
+      sctx.fillText('VISCOUS DAMPER (brace)', midX, midY - 20);
+    }
+
+    sctx.fillStyle = '#7c8aa0';
+    sctx.font = '11px "IBM Plex Mono", monospace';
+    sctx.textAlign = 'center';
+    sctx.fillText(buildingFloors + 'F BUILDING', bx, bTop - (mode==='tmd'?34:(mode==='tld'?66:14)));
+  }
+
+  function drawGraph(){
+    const W = graph.width, H = graph.height;
+    gctx.clearRect(0,0,W,H);
+    gctx.strokeStyle = 'rgba(148,168,196,0.08)'; gctx.lineWidth = 1;
+    for(let x=0;x<W;x+=40){ gctx.beginPath(); gctx.moveTo(x,0); gctx.lineTo(x,H); gctx.stroke(); }
+    const midY = H/2;
+    gctx.strokeStyle = 'rgba(148,168,196,0.18)';
+    gctx.beginPath(); gctx.moveTo(0,midY); gctx.lineTo(W,midY); gctx.stroke();
+
+    const vScale = 220;
+    function plot(hist, color){
+      if(hist.length < 2) return;
+      gctx.strokeStyle = color; gctx.lineWidth = 1.6;
+      gctx.beginPath();
+      for(let i=0;i<hist.length;i++){
+        const x = (i/maxPoints) * W;
+        const y = midY - hist[i]*vScale;
+        if(i===0) gctx.moveTo(x,y); else gctx.lineTo(x,y);
+      }
+      gctx.stroke();
+    }
+    plot(groundHist, '#e8452c');
+    plot(buildingHist, '#4fa8e8');
+    if (mode !== 'viscous') plot(secHist, mode === 'tmd' ? '#f2c14e' : '#7dd3fc');
+
+    gctx.fillStyle = '#7c8aa0';
+    gctx.font = '10px "IBM Plex Mono", monospace';
+    gctx.textAlign = 'left';
+    gctx.fillText('displacement (m)  ·  window: ' + HISTORY_SECONDS + 's', 8, 14);
+  }
+
+  function updateStats(){
+    const fN = getNaturalFreq();
+    naturalFreqEl.textContent = fN.toFixed(2) + ' Hz';
+
+    const groundAmplitude = 0.5;
+    const windowSize = Math.min(buildingHist.length, 300);
+    let amp = 0;
+    if (windowSize > 5){
+      let maxV = -Infinity, minV = Infinity;
+      for (let i = buildingHist.length - windowSize; i < buildingHist.length; i++){
+        const v = buildingHist[i];
+        if (v > maxV) maxV = v;
+        if (v < minV) minV = v;
+      }
+      amp = (maxV - minV) / 2;
+    }
+    const daf = amp / groundAmplitude;
+    const pct = Math.round(100 * daf / (daf + 1));
+
+    riskFill.style.width = pct + '%';
+    if(pct > 60){ riskLabel.textContent = '위험 (증폭 ' + daf.toFixed(2) + '배)'; riskFill.style.background = 'var(--quake)'; }
+    else if(pct > 25){ riskLabel.textContent = '주의  (증폭 ' + daf.toFixed(2) + '배)'; riskFill.style.background = 'var(--tmd)'; }
+    else { riskLabel.textContent = '안전  (증폭 ' + daf.toFixed(2) + '배)'; riskFill.style.background = 'var(--safe)'; }
+  }
+
+  let lastFrame = performance.now();
+  let accumulator = 0;
+  function loop(now){
+    const frameDt = Math.min((now - lastFrame)/1000, 0.05);
+    lastFrame = now;
+    if(running && currentView === 'sim'){
+      accumulator += frameDt;
+      let steps = 0;
+      while(accumulator >= dt && steps < 12){ step(); accumulator -= dt; steps++; }
+    }
+    if(currentView === 'sim'){ drawStage(); drawGraph(); updateStats(); }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
 </body>
 </html>
